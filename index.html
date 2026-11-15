@@ -66,7 +66,7 @@ input,select{width:100%;font-size:18px;padding:14px;border-radius:12px;border:1p
   <div><label>샷클락 시간 (초)</label><input id="sec" type="number" inputmode="decimal" min="1" step="0.5" value="30"></div>
   <div class="err" id="setupErr"></div>
   <button class="btn" id="go">입장</button>
-  <p class="hint">시계 화면: 한 번 터치 = 멈춤/재개 · 옆으로 밀기 = 초기화 후 바로 시작 · 두 손가락 터치 = 플레이어 아웃 화면</p>
+  <p class="hint">시계 화면: 한 번 터치 = 멈춤/재개 · 옆으로 밀기 = 초기화 후 바로 시작 · 꾹 누르기 = 플레이어 아웃 화면</p>
   <button class="btn ghost" id="logout">로그아웃</button>
 </div>
 
@@ -199,20 +199,29 @@ async function wake(){
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&running)wake();});
 
-// ---- 제스처: 한 손가락 탭=멈춤/재개, 밀기=초기화, 두 손가락=아웃 화면 ----
-let t0=null,multi=false;
+// ---- 제스처: 탭=멈춤/재개, 밀기=초기화, 꾹 누르기(0.6초)=아웃 화면 ----
+const HOLD_MS=600;
+let t0=null,holdTimer=null;
 const clock=$('clock');
+const cancelHold=()=>{clearTimeout(holdTimer);holdTimer=null;};
 clock.addEventListener('touchstart',e=>{
-  if(e.target===$('gear'))return;
-  if(e.touches.length>=2){multi=true;openOut();return;}
-  multi=false;const t=e.touches[0];t0={x:t.clientX,y:t.clientY,at:now()};
+  if(e.target===$('gear')||e.touches.length>1){cancelHold();t0=null;return;}
+  const t=e.touches[0];t0={x:t.clientX,y:t.clientY,at:now()};
+  holdTimer=setTimeout(()=>{holdTimer=null;t0=null;navigator.vibrate?.(40);openOut();},HOLD_MS);
+},{passive:true});
+clock.addEventListener('touchmove',e=>{
+  if(!t0||!holdTimer)return;
+  const t=e.touches[0];
+  if(Math.hypot(t.clientX-t0.x,t.clientY-t0.y)>=15)cancelHold();   // 밀기 시작이면 꾹 누르기 취소
 },{passive:true});
 clock.addEventListener('touchend',e=>{
-  if(multi||!t0||e.touches.length)return;
+  cancelHold();
+  if(!t0||e.touches.length)return;
   const t=e.changedTouches[0];
   const g=gesture(t.clientX-t0.x,t.clientY-t0.y,now()-t0.at);t0=null;
   if(g==='reset')reset();else if(g==='tap')running?pause():start();
 });
+clock.addEventListener('touchcancel',()=>{cancelHold();t0=null;});
 // PC 시험용(마우스): 클릭=탭, Shift+클릭=초기화, 우클릭=아웃
 clock.addEventListener('click',e=>{if(e.target===$('gear')||'ontouchstart' in window)return;if(e.shiftKey)reset();else running?pause():start();});
 clock.addEventListener('contextmenu',e=>{e.preventDefault();openOut();});
