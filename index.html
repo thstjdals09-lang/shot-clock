@@ -87,7 +87,7 @@ input,select{width:100%;font-size:18px;padding:14px;border-radius:12px;border:1p
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import{getAuth,signInAnonymously,signInWithEmailAndPassword,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import{getDatabase,ref,get,set,update,onValue}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import{fmt,events,tables,seated,bustUpdate,gesture}from"./logic.js";
 
@@ -112,8 +112,16 @@ let eventId=null,table=null,durMs=30000;
 let remain=30000,endsAt=0,running=false; // running 이면 remain 대신 endsAt 기준
 const pref=JSON.parse(localStorage.getItem('shotclock')||'{}');
 
+// 딜러 폰은 익명 로그인(입력 없음). 콘솔에서 익명 로그인이 꺼져 있으면 이메일 화면으로 넘어간다.
+let anonTried=false;
 onAuthStateChanged(auth,user=>{
-  if(!user){show('login');return;}
+  if(!user){
+    if(anonTried){show('login');return;}
+    anonTried=true;
+    signInAnonymously(auth).catch(e=>{$('loginErr').textContent=e.code==='auth/admin-restricted-operation'?'파이어베이스 콘솔에서 익명 로그인을 켜면 이 화면 없이 바로 들어옵니다.':'자동 로그인 실패: '+(e.code||e.message);show('login');});
+    return;
+  }
+  $('logout').style.display=user.isAnonymous?'none':'';
   onValue(ref(db,'tournament'),snap=>{
     const d=snap.val()||{};
     data={evs:d.evs,ps:d.ps};
