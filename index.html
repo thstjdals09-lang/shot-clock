@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b0d12">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>딜러 샷클락</title>
+<style>
+:root{--bg:#0b0d12;--bg2:#161a24;--tx:#f2f4f8;--tx2:#8b93a7;--acc:#4f8cff;--red:#ff4d4f;--amber:#ffb020}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.screen{position:fixed;inset:0;display:none;flex-direction:column}
+.screen.on{display:flex}
+#setup,#login,#out{padding:24px 20px;gap:14px;overflow-y:auto;touch-action:pan-y}
+h1{font-size:22px;font-weight:700}
+label{font-size:13px;color:var(--tx2);display:block;margin-bottom:6px}
+input,select{width:100%;font-size:18px;padding:14px;border-radius:12px;border:1px solid #2a3040;background:var(--bg2);color:var(--tx);outline:none}
+.btn{display:block;width:100%;font-size:18px;font-weight:700;padding:16px;border-radius:14px;border:0;background:var(--acc);color:#fff}
+.btn.ghost{background:var(--bg2);color:var(--tx)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.grid button{font-size:20px;font-weight:700;padding:18px 0;border-radius:12px;border:1px solid #2a3040;background:var(--bg2);color:var(--tx)}
+.grid button.sel{background:var(--acc);border-color:var(--acc)}
+.err{color:var(--red);font-size:14px;min-height:18px}
+.hint{color:var(--tx2);font-size:13px;line-height:1.6}
+#login{justify-content:center}
+#boot{align-items:center;justify-content:center;color:var(--tx2)}
+/* 시계 */
+#clock{align-items:center;justify-content:center}
+#clock.paused{background:#1a1500}
+#clock.warn #time{color:var(--amber)}
+#clock.over{background:#3a0a0c}
+#clock.over #time{color:var(--red);animation:blink .5s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+#time{font-size:min(38vw,42vh);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.03em;line-height:1}
+#sub{position:fixed;top:14px;left:18px;font-size:15px;color:var(--tx2)}
+#state{position:fixed;bottom:18px;left:0;right:0;text-align:center;font-size:15px;color:var(--tx2)}
+#gear{position:fixed;top:8px;right:8px;font-size:22px;padding:10px 14px;background:transparent;border:0;color:var(--tx2)}
+/* 아웃 */
+#out h2{font-size:20px}
+#out .list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#out .list button{font-size:20px;font-weight:700;padding:22px 10px;border-radius:14px;border:0;background:var(--bg2);color:var(--tx);text-align:left;display:flex;gap:12px;align-items:center}
+#out .list button b{color:var(--acc);font-size:24px;min-width:28px}
+#out .list button:active{background:var(--red)}
+</style>
+</head>
+<body>
+<div id="boot" class="screen on">불러오는 중…</div>
+
+<div id="login" class="screen">
+  <h1>딜러 샷클락</h1>
+  <p class="hint">야자수 홀덤관리 프로그램과 같은 계정으로 로그인합니다.</p>
+  <div><label>이메일</label><input id="email" type="email" autocomplete="username"></div>
+  <div><label>비밀번호</label><input id="pw" type="password" autocomplete="current-password"></div>
+  <div class="err" id="loginErr"></div>
+  <button class="btn" id="loginBtn">로그인</button>
+</div>
+
+<div id="setup" class="screen">
+  <h1>테이블 선택</h1>
+  <div><label>이벤트</label><select id="ev"></select></div>
+  <div><label>테이블 (플레이어가 앉은 테이블만 표시)</label><div class="grid" id="tbl"></div></div>
+  <div><label>직접 입력</label><input id="tblIn" type="number" inputmode="numeric" min="1" placeholder="테이블 번호"></div>
+  <div><label>샷클락 시간 (초)</label><input id="sec" type="number" inputmode="decimal" min="1" step="0.5" value="30"></div>
+  <div class="err" id="setupErr"></div>
+  <button class="btn" id="go">입장</button>
+  <p class="hint">시계 화면: 한 번 터치 = 멈춤/재개 · 옆으로 밀기 = 초기화 후 바로 시작 · 두 손가락 터치 = 플레이어 아웃 화면</p>
+  <button class="btn ghost" id="logout">로그아웃</button>
+</div>
+
+<div id="clock" class="screen">
+  <div id="sub"></div>
+  <button id="gear" aria-label="설정">⚙</button>
+  <div id="time">30.00</div>
+  <div id="state"></div>
+</div>
+
+<div id="out" class="screen">
+  <h2 id="outTitle">플레이어 아웃</h2>
+  <p class="hint">아웃시킬 플레이어를 누르세요. 확인 후 야자수 프로그램에 버스트로 기록됩니다.</p>
+  <div class="list" id="outList"></div>
+  <div class="err" id="outErr"></div>
+  <button class="btn ghost" id="outBack">← 시계로</button>
+</div>
+
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import{getDatabase,ref,get,set,update,onValue}from"https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import{fmt,events,tables,seated,bustUpdate,gesture}from"./logic.js";
+
+// 야자수(thstjdals09-lang/yajasu)와 같은 프로젝트·같은 tournament 노드
+const app=initializeApp({
+  apiKey:"AIzaSyDOhs7nLcpKSKmuoAlGXwU11UFHOaN5Vgk",
+  authDomain:"seongmin-2a1e9.firebaseapp.com",
+  databaseURL:"https://seongmin-2a1e9-default-rtdb.firebaseio.com",
+  projectId:"seongmin-2a1e9",
+  storageBucket:"seongmin-2a1e9.firebasestorage.app",
+  messagingSenderId:"977066197284",
+  appId:"1:977066197284:web:ceeb5d17254301cf46f3b1"
+});
+const auth=getAuth(app),db=getDatabase(app);
+const SID='shotclock-'+Math.random().toString(36).slice(2);
+const $=id=>document.getElementById(id);
+const show=id=>{document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));};
+const isOn=id=>$(id).classList.contains('on');
+
+let data={evs:null,ps:null};             // tournament 노드 사본
+let eventId=null,table=null,durMs=30000;
+let remain=30000,endsAt=0,running=false; // running 이면 remain 대신 endsAt 기준
+const pref=JSON.parse(localStorage.getItem('shotclock')||'{}');
+
+onAuthStateChanged(auth,user=>{
+  if(!user){show('login');return;}
+  onValue(ref(db,'tournament'),snap=>{
+    const d=snap.val()||{};
+    data={evs:d.evs,ps:d.ps};
+    if(isOn('setup'))renderSetup();
+    if(isOn('out'))renderOut();
+  });
+  show('setup');renderSetup();
+});
+
+$('loginBtn').onclick=async()=>{
+  $('loginErr').textContent='';
+  try{await signInWithEmailAndPassword(auth,$('email').value.trim(),$('pw').value);}
+  catch(e){$('loginErr').textContent='로그인 실패: '+(e.code||e.message);}
+};
+$('logout').onclick=()=>{if(confirm('로그아웃 할까요?'))signOut(auth);};
+
+// ---- 입장 ----
+function renderSetup(){
+  const evs=events(data.evs),sel=$('ev');
+  const cur=Number(sel.value)||pref.eventId;
+  sel.innerHTML=evs.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  if(evs.some(e=>e.id===cur))sel.value=cur;
+  if(pref.sec&&!$('sec').dataset.touched)$('sec').value=pref.sec;
+  renderTables();
+}
+function renderTables(){
+  const ts=tables(data.ps,Number($('ev').value));
+  if(!$('tblIn').value&&pref.table)$('tblIn').value=pref.table;
+  const chosen=Number($('tblIn').value);
+  $('tbl').innerHTML=ts.map(t=>`<button data-t="${t}" class="${t===chosen?'sel':''}">${t}</button>`).join('')
+    ||'<span class="hint">이 이벤트에 앉은 플레이어가 없습니다. 아래에 번호를 직접 입력하세요.</span>';
+  $('tbl').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('tblIn').value=b.dataset.t;renderTables();});
+}
+$('ev').onchange=renderTables;
+$('tblIn').oninput=renderTables;
+$('sec').oninput=()=>{$('sec').dataset.touched=1;};
+$('go').onclick=()=>{
+  const eid=Number($('ev').value),t=Number($('tblIn').value),sec=Number($('sec').value);
+  const err=!eid?'이벤트를 선택하세요.':!(t>=1)?'테이블 번호를 고르거나 입력하세요.':!(sec>=1)?'시간은 1초 이상이어야 합니다.':'';
+  $('setupErr').textContent=err;if(err)return;
+  eventId=eid;table=t;durMs=Math.round(sec*1000);
+  localStorage.setItem('shotclock',JSON.stringify({eventId,table,sec}));
+  const ev=events(data.evs).find(e=>e.id===eid);
+  $('sub').textContent=`${ev?ev.name:''} · T${t}`;
+  remain=durMs;running=false;publish();show('clock');
+};
+$('gear').onclick=()=>{pause();show('setup');renderSetup();};
+
+// ---- 시계 ----
+const now=()=>performance.now();
+const left=()=>running?endsAt-now():remain;
+function start(){if(left()<=0)remain=durMs;endsAt=now()+left();running=true;wake();publish();}
+function pause(){remain=Math.max(0,left());running=false;publish();}
+function reset(){remain=durMs;endsAt=now()+durMs;running=true;wake();publish();}
+function tick(){
+  const ms=left(),c=$('clock').classList;
+  $('time').textContent=fmt(ms);
+  c.toggle('paused',!running&&ms>0);c.toggle('warn',ms>0&&ms<=5000);c.toggle('over',ms<=0);
+  $('state').textContent=ms<=0?'시간 종료 · 밀어서 초기화':running?'진행 중':'멈춤 · 터치해서 재개';
+  if(ms<=0&&running){running=false;remain=0;navigator.vibrate?.([300,100,300]);publish();}
+  requestAnimationFrame(tick);
+}
+tick();
+// 다른 프로그램(TV 화면 등)이 읽을 수 있게 상태가 바뀔 때만 올린다.
+function publish(){
+  if(!auth.currentUser||!eventId)return;
+  const ms=Math.max(0,Math.round(left()));
+  set(ref(db,`shotclock/${eventId}/${table}`),{
+    durationMs:durMs,remainingMs:ms,running,endsAt:running?Date.now()+ms:null,updatedAt:Date.now(),sid:SID
+  }).catch(e=>console.error('publish',e));
+}
+let lock=null;
+async function wake(){
+  try{if(!lock&&navigator.wakeLock){lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>{lock=null;});}}catch{}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&running)wake();});
+
+// ---- 제스처: 한 손가락 탭=멈춤/재개, 밀기=초기화, 두 손가락=아웃 화면 ----
+let t0=null,multi=false;
+const clock=$('clock');
+clock.addEventListener('touchstart',e=>{
+  if(e.target===$('gear'))return;
+  if(e.touches.length>=2){multi=true;openOut();return;}
+  multi=false;const t=e.touches[0];t0={x:t.clientX,y:t.clientY,at:now()};
+},{passive:true});
+clock.addEventListener('touchend',e=>{
+  if(multi||!t0||e.touches.length)return;
+  const t=e.changedTouches[0];
+  const g=gesture(t.clientX-t0.x,t.clientY-t0.y,now()-t0.at);t0=null;
+  if(g==='reset')reset();else if(g==='tap')running?pause():start();
+});
+// PC 시험용(마우스): 클릭=탭, Shift+클릭=초기화, 우클릭=아웃
+clock.addEventListener('click',e=>{if(e.target===$('gear')||'ontouchstart' in window)return;if(e.shiftKey)reset();else running?pause():start();});
+clock.addEventListener('contextmenu',e=>{e.preventDefault();openOut();});
+
+// ---- 아웃 ----
+function openOut(){renderOut();show('out');}
+function renderOut(){
+  $('outTitle').textContent=`T${table} 플레이어 아웃`;
+  const list=seated(data.ps,eventId,table);
+  $('outList').innerHTML=list.map(p=>`<button data-id="${p.id}"><b>${p.seat}</b><span>${p.name}</span></button>`).join('')
+    ||'<span class="hint">이 테이블에 남은 플레이어가 없습니다.</span>';
+  $('outList').querySelectorAll('button').forEach(b=>b.onclick=()=>bust(Number(b.dataset.id)));
+}
+async function bust(pid){
+  const p=seated(data.ps,eventId,table).find(x=>x.id===pid);
+  if(!p||!confirm(`${p.seat}번 "${p.name}" 아웃 처리할까요?`))return;
+  $('outErr').textContent='';
+  try{
+    const fresh=(await get(ref(db,'tournament/ps'))).val();   // 인덱스가 바뀌었을 수 있어 바로 전에 다시 읽음
+    const payload=bustUpdate(fresh,pid,SID);
+    if(!payload){$('outErr').textContent='이미 아웃 처리된 플레이어입니다.';return;}
+    await update(ref(db,'tournament'),payload);
+    show('clock');
+  }catch(e){$('outErr').textContent='저장 실패: '+(e.code||e.message);}
+}
+$('outBack').onclick=()=>show('clock');
+</script>
+</body>
+</html>
